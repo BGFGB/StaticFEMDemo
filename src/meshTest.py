@@ -2,6 +2,7 @@ import meshio
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse import lil_matrix
+from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spsolve
 from scipy.sparse.linalg import spilu
 from numpy.linalg import solve, norm
@@ -165,6 +166,7 @@ class FEAModel:
         self.KF = None # K for free nodes
         self.FF = None # # F for free nodes
         self.freeNodeIdList = None
+        self.UMagnitude = None
 
         self.KeList = []
         self.LeList = []
@@ -224,29 +226,46 @@ class FEAModel:
         print(type(self.KF))
         print(type(self.FF))
 
-        self.KF = csr_matrix(self.KF)
-        self.FF = csr_matrix(self.FF)
+        self.KF = csc_matrix(self.KF)
+        self.FF = csc_matrix(self.FF)
 
-        # luKF = spilu(self.KF)
-        # self.UF = luKF.solve(self.FF.toarray())
+        luKF = spilu(self.KF)
+        self.UF = luKF.solve(self.FF.toarray())
 
-        self.UF = spsolve(self.KF, self.FF)
+        # self.UF = spsolve(self.KF, self.FF)
         # print(self.UF)
-        print(np.max(self.UF))
+    def getDisplacement(self, scale):
         UF = self.UF
         UF = UF.reshape(self.numN-len(self.problem.fixedNode), 3)
         self.U = np.zeros((self.numN, 3))
         for i,nodeDisp in enumerate(UF):
             nodeId = self.freeNodeIdList[i]
             self.U[nodeId] = nodeDisp
-        print(self.U.shape)
-        UMagnitude = [np.linalg.norm(d) for d in self.U]
-        print(np.argmax(UMagnitude))
-        print(np.max(UMagnitude))
 
+        self.newPosition = self.nodesM+self.U*scale
+
+    def getDispMag(self):
+
+        self.UMagnitude = [np.linalg.norm(d) for d in self.U]
+        print(np.argmax(self.UMagnitude))
+        print(np.max(self.UMagnitude))
+        return self.UMagnitude
+
+
+
+
+    def plotContour(self, value):
+        maxValue = np.max(value)
+        minValue = np.min(value)
+        cValue = (value-minValue)/(maxValue-minValue)
+        print(cValue*2)
+        
         fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter3D(self.nodesM[:,0], self.nodesM[:,1], self.nodesM[:,2], c=UMagnitude)
+        ax = fig.add_subplot(121, projection='3d')
+        ax.scatter3D(self.newPosition[:,0], self.newPosition[:,1], self.newPosition[:,2], c=cValue,cmap=plt.cm.get_cmap('jet'))
+        axisEqual3D(ax) 
+        ax = fig.add_subplot(122, projection='3d')
+        ax.scatter3D(self.nodesM[:,0], self.nodesM[:,1], self.nodesM[:,2], c=np.zeros(len(self.nodesM[:,0])),cmap=plt.cm.get_cmap('jet'))
         axisEqual3D(ax)
         plt.show()
 
@@ -262,7 +281,7 @@ def axisEqual3D(ax):
 
 if __name__ == "__main__":
 
-    meshFile = "beamHex1_2.inp"
+    meshFile = "model/beamHex1.inp"
     modulus = 113000.0  # MPa
     poissonRatio = 0.23
 
@@ -275,3 +294,6 @@ if __name__ == "__main__":
     mod.getF()
     mod.eliminateFixedNode()
     mod.solve()
+    mod.getDisplacement(5.0)
+    UMag = mod.getDispMag()
+    mod.plotContour(UMag)
